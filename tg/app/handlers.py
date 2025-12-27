@@ -1,22 +1,23 @@
 from __future__ import annotations
 
+import random
+
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from tg.app.api_client import PlacesApiClient
 from tg.app.keyboards import (
     MAIN_MENU,
-    MIN_RATINGS,
     category_keyboard,
     find_menu,
     place_actions,
     price_keyboard,
-    rating_keyboard,
 )
 from tg.app.models import Place, utc_now
-from tg.app.services import LlmSummaryService, RecommendationService, SearchFilters
+from tg.app.services import LlmSummaryService
 from tg.app.states import AddPlaceStates, SearchStates
 from tg.app.storage import JsonStorage
 
@@ -70,13 +71,20 @@ async def find_search(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(F.data == "find:random")
-async def find_random(callback: CallbackQuery, storage: JsonStorage, llm: LlmSummaryService) -> None:
-    recommender = RecommendationService()
-    place = recommender.random_place(storage.list_places())
-    if place is None:
-        await callback.message.edit_text("Пока нет одобренных мест. Попробуйте позже.")
+async def find_random(
+    callback: CallbackQuery,
+    state: FSMContext,
+    storage: JsonStorage,
+    llm: LlmSummaryService,
+    places_api: PlacesApiClient,
+) -> None:
+    places = await places_api.search_places(query="интересное место", limit=10)
+    if not places:
+        await callback.message.edit_text("Пока нет подходящих мест. Попробуйте позже.")
         await callback.answer()
         return
+    place = random.choice(places)
+    await state.update_data(results=[item.to_dict() for item in places], index=places.index(place))
     await send_place_card(callback.message, place, storage, llm)
     await callback.answer()
 
@@ -90,48 +98,28 @@ async def find_nearby(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(SearchStates.category, F.data.startswith("category:"))
-async def select_category(callback: CallbackQuery, state: FSMContext) -> None:
+async def select_category(
+    callback: CallbackQuery,
+    state: FSMContext,
+    storage: JsonStorage,
+    llm: LlmSummaryService,
+    places_api: PlacesApiClient,
+) -> None:
     category = callback.data.split(":", 1)[1]
     await state.update_data(category=category)
-    await state.set_state(SearchStates.price)
-    await callback.message.edit_text("Выберите ценовой диапазон:", reply_markup=price_keyboard())
+    results = await places_api.search_places(category=category, limit=10)
+    if not results:
+        await callback.message.edit_text("Пока нет мест в этой категории. Попробуйте поиск по тексту.")
+        await state.clear()
+        await callback.answer()
+        return
+    await state.update_data(results=[place.to_dict() for place in results], index=0)
+    await send_place_card(callback.message, results[0], storage, llm)
     await callback.answer()
 
 
 @router.callback_query(SearchStates.price, F.data.startswith("price:"))
 async def select_price(callback: CallbackQuery, state: FSMContext) -> None:
-    price = callback.data.split(":", 1)[1]
-    await state.update_data(price=price)
-    await state.set_state(SearchStates.rating)
-    await callback.message.edit_text("Минимальный рейтинг:", reply_markup=rating_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(SearchStates.rating, F.data.startswith("rating:"))
-async def select_rating(
-    callback: CallbackQuery,
-    state: FSMContext,
-    storage: JsonStorage,
-    llm: LlmSummaryService,
-) -> None:
-    label = callback.data.split(":", 1)[1]
-    rating_value = next((value for item, value in MIN_RATINGS if item == label), None)
-    data = await state.get_data()
-    filters = SearchFilters(
-        category=data.get("category"),
-        price_level=data.get("price"),
-        min_rating=rating_value,
-    )
-    recommender = RecommendationService()
-    results = recommender.filter_places(storage.list_places(), filters)
-    if not results:
-        await callback.message.edit_text("Ничего не найдено. Попробуйте другую категорию.")
-        await state.clear()
-        await callback.answer()
-        return
-    await state.update_data(results=[place.id for place in results], index=0)
-    await state.set_state(SearchStates.rating)
-    await send_place_card(callback.message, results[0], storage, llm)
     await callback.answer()
 
 
@@ -141,16 +129,15 @@ async def handle_query(
     state: FSMContext,
     storage: JsonStorage,
     llm: LlmSummaryService,
+    places_api: PlacesApiClient,
 ) -> None:
     query = message.text.strip()
-    filters = SearchFilters(query=query)
-    recommender = RecommendationService()
-    results = recommender.filter_places(storage.list_places(), filters)
+    results = await places_api.search_places(query=query, limit=10)
     if not results:
         await message.answer("Ничего не найдено. Попробуйте другой запрос.")
         await state.clear()
         return
-    await state.update_data(results=[place.id for place in results], index=0)
+    await state.update_data(results=[place.to_dict() for place in results], index=0)
     await send_place_card(message, results[0], storage, llm)
 
 
@@ -161,15 +148,16 @@ async def send_place_card(
     llm: LlmSummaryService,
 ) -> None:
     reviews = storage.list_reviews(place.id, status="approved")
-    summary = llm.summarize(place, reviews)
+    summary = place.description or llm.summarize(place, reviews)
     is_favorite = place.id in storage.get_profile(message.chat.id).favorites
-    text = (
-        f"*{place.name}*\n"
-        f"Категория: {place.category}\n"
-        f"Цена: {place.price_level}\n"
-        f"Рейтинг: {place.rating:.1f}\n\n"
-        f"{summary}"
-    )
+    lines = [f"*{place.name}*"]
+    if place.category:
+        lines.append(f"Категория: {place.category}")
+    if place.address:
+        lines.append(f"Адрес: {place.address}")
+    if place.score is not None:
+        lines.append(f"Релевантность: {place.score:.2f}")
+    text = "\n".join(lines) + f"\n\n{summary}"
     await message.answer(text, reply_markup=place_actions(place.id, is_favorite), parse_mode=ParseMode.MARKDOWN)
 
 
@@ -181,61 +169,63 @@ async def next_place(
     llm: LlmSummaryService,
 ) -> None:
     data = await state.get_data()
-    results = data.get("results", [])
-    if not results:
+    raw_results = data.get("results", [])
+    if not raw_results:
         await callback.message.answer("Сначала выберите категорию или поиск.")
         await callback.answer()
         return
     index = int(data.get("index", 0)) + 1
-    if index >= len(results):
+    if index >= len(raw_results):
         await callback.message.answer("Это все варианты. Попробуйте другие фильтры.")
         await state.clear()
         await callback.answer()
         return
     await state.update_data(index=index)
-    place = storage.get_place(results[index])
-    if place:
-        await send_place_card(callback.message, place, storage, llm)
+    place_data = raw_results[index]
+    place = Place.from_dict(place_data)
+    await send_place_card(callback.message, place, storage, llm)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("place:") & F.data.endswith(":favorite"))
 async def toggle_favorite(callback: CallbackQuery, storage: JsonStorage) -> None:
     _, place_id, _ = callback.data.split(":")
-    is_favorite = storage.toggle_favorite(callback.from_user.id, int(place_id))
+    is_favorite = storage.toggle_favorite(callback.from_user.id, place_id)
     text = "Добавлено в избранное." if is_favorite else "Удалено из избранного."
     await callback.message.answer(text)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("place:") & F.data.endswith(":reviews"))
-async def show_reviews(callback: CallbackQuery, storage: JsonStorage) -> None:
-    _, place_id, _ = callback.data.split(":")
-    reviews = storage.list_reviews(int(place_id), status="approved")
-    if not reviews:
-        await callback.message.answer("Отзывов пока нет. Вы можете стать первым!")
-        await callback.answer()
-        return
-    preview = "\n\n".join(
-        f"⭐ {review.rating:.1f} — {review.text}" for review in reviews[:3]
-    )
-    await callback.message.answer(preview)
+async def show_reviews(callback: CallbackQuery) -> None:
+    await callback.message.answer("Отзывы скоро появятся, а пока поделитесь впечатлениями в чате 🤝")
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("place:") & F.data.endswith(":address"))
-async def show_address(callback: CallbackQuery, storage: JsonStorage) -> None:
+async def show_address(
+    callback: CallbackQuery,
+    state: FSMContext,
+    places_api: PlacesApiClient,
+) -> None:
     _, place_id, _ = callback.data.split(":")
-    place = storage.get_place(int(place_id))
-    if place:
-        await callback.message.answer(f"Адрес: {place.address}")
+    place = await _get_place_from_state(state, place_id)
+    if place is None:
+        place = await places_api.get_place(place_id)
+    if place and place.address:
+        text = f"Адрес: {place.address}"
+        if place.latitude and place.longitude:
+            text += f"\nКоординаты: {place.latitude}, {place.longitude}"
+        await callback.message.answer(text)
+    else:
+        await callback.message.answer("Адрес пока неизвестен, но мы работаем над этим.")
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("place:") & F.data.endswith(":like"))
 async def like_place(callback: CallbackQuery, storage: JsonStorage) -> None:
     _, place_id, _ = callback.data.split(":")
-    storage.record_like(callback.from_user.id, int(place_id), 1)
+    storage.record_like(callback.from_user.id, place_id, 1)
     await callback.message.answer("Спасибо! Мы учтем ваш лайк в будущих рекомендациях.")
     await callback.answer()
 
@@ -243,7 +233,7 @@ async def like_place(callback: CallbackQuery, storage: JsonStorage) -> None:
 @router.callback_query(F.data.startswith("place:") & F.data.endswith(":dislike"))
 async def dislike_place(callback: CallbackQuery, storage: JsonStorage) -> None:
     _, place_id, _ = callback.data.split(":")
-    storage.record_like(callback.from_user.id, int(place_id), -1)
+    storage.record_like(callback.from_user.id, place_id, -1)
     await callback.message.answer("Учтем ваш выбор. Подберем что-то другое!")
     await callback.answer()
 
@@ -326,7 +316,7 @@ async def add_place_confirm(
         return
     data = await state.get_data()
     place = Place(
-        id=storage.next_place_id(),
+        id=str(storage.next_place_id()),
         name=data["name"],
         category=data["category"],
         address=data["address"],
@@ -358,13 +348,25 @@ async def profile_menu(message: Message, storage: JsonStorage) -> None:
 
 
 @router.message(F.text.lower() == "избранное")
-async def show_favorites(message: Message, storage: JsonStorage) -> None:
-    favorites = storage.list_favorites(message.from_user.id)
-    if not favorites:
+async def show_favorites(
+    message: Message,
+    storage: JsonStorage,
+    places_api: PlacesApiClient,
+) -> None:
+    favorite_ids = storage.list_favorites(message.from_user.id)
+    if not favorite_ids:
         await message.answer("Избранных мест пока нет.")
         return
-    lines = [f"• {place.name} ({place.category})" for place in favorites]
-    await message.answer("\n".join(lines))
+    lines: list[str] = []
+    for place_id in favorite_ids:
+        place = await places_api.get_place(place_id)
+        if place:
+            category = place.category or "Без категории"
+            lines.append(f"• {place.name} ({category})")
+    if lines:
+        await message.answer("\n".join(lines))
+    else:
+        await message.answer("Не удалось загрузить данные об избранных местах, попробуйте позже.")
 
 
 @router.message(F.text.lower() == "мои места")
@@ -378,8 +380,13 @@ async def show_user_places(message: Message, storage: JsonStorage) -> None:
 
 
 @router.message(F.text == "🏆 Топы")
-async def show_tops(message: Message, storage: JsonStorage, llm: LlmSummaryService) -> None:
-    places = sorted(storage.list_places(status="approved"), key=lambda item: item.rating, reverse=True)
+async def show_tops(
+    message: Message,
+    storage: JsonStorage,
+    llm: LlmSummaryService,
+    places_api: PlacesApiClient,
+) -> None:
+    places = await places_api.search_places(query="лучшие места", limit=3)
     if not places:
         await message.answer("Пока нет одобренных мест.")
         return
@@ -429,7 +436,7 @@ async def moderate_place(callback: CallbackQuery, storage: JsonStorage, admin_id
         await callback.answer()
         return
     _, place_id, action = callback.data.split(":")
-    place = storage.get_place(int(place_id))
+    place = storage.get_place(place_id)
     if not place:
         await callback.message.answer("Место не найдено.")
         await callback.answer()
@@ -441,6 +448,17 @@ async def moderate_place(callback: CallbackQuery, storage: JsonStorage, admin_id
     storage.update_place(place)
     await callback.message.answer(f"Готово. Статус: {place.status}.")
     await callback.answer()
+
+
+async def _get_place_from_state(state: FSMContext, place_id: str) -> Place | None:
+    data = await state.get_data()
+    for item in data.get("results", []):
+        if str(item.get("id")) == str(place_id):
+            try:
+                return Place.from_dict(item)
+            except Exception:  # noqa: BLE001
+                return None
+    return None
 
 
 @router.message()

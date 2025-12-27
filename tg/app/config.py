@@ -15,6 +15,7 @@ class Settings:
     bot_token: str
     admin_ids: set[int]
     data_dir: str
+    api_base_url: str
 
 
     @classmethod
@@ -26,4 +27,5 @@ class Settings:
             bot_token=token,
             admin_ids=_split_ints(os.getenv("ADMIN_IDS")),
             data_dir=os.getenv("DATA_DIR", "data"),
+            api_base_url=os.getenv("API_BASE_URL", "http://localhost:8000/v1"),
         )

@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
+from app.api_client import PlacesApiClient
 from app.config import Settings
 from app.handlers import router
 from app.services import LlmSummaryService
@@ -19,7 +20,7 @@ async def main() -> None:
     settings = Settings.from_env()
 
     storage = JsonStorage(settings.data_dir)
-    storage.ensure_seed_data()
+    places_api = PlacesApiClient(settings.api_base_url)
 
     bot = Bot(token=settings.bot_token)
     dispatcher = Dispatcher(storage=MemoryStorage())
@@ -28,6 +29,7 @@ async def main() -> None:
     llm_service = LlmSummaryService()
 
     dispatcher["storage"] = storage
+    dispatcher["places_api"] = places_api
     dispatcher["llm"] = llm_service
     dispatcher["admin_ids"] = settings.admin_ids
 
