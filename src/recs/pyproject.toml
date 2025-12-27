@@ -22,12 +22,12 @@ dependencies = [
 description = ""
 name = "recs"
 readme = "README.md"
-requires-python = ">=3.13,<4.0"
+requires-python = ">=3.11,<3.13"
 version = "0.1.0"
 
 [tool.black]
 line-length = 120
-target-version = ['py312']
+target-version = ['py311']
 
 [tool.coverage.report]
 exclude_also = [
@@ -81,7 +81,7 @@ exclude = [".pytest_cache", ".venv"]
 extraPaths = ["."]
 include = ["."]
 pythonPlatform = "All"
-pythonVersion = "3.13"
+pythonVersion = "3.11"
 reportConstantRedefinition = "none"
 reportMissingTypeStubs = "none"
 reportPrivateUsage = "information"
@@ -98,7 +98,7 @@ venvPath = "."
 [tool.ruff]
 exclude = [".pytest_cache", ".venv"]
 line-length = 120
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 extend-select = [
