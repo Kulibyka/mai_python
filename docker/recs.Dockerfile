@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.13-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -13,8 +13,9 @@ RUN apt-get update \
 
 COPY src/recs/pyproject.toml src/recs/poetry.lock ./ 
 
-RUN pip install "poetry>=1.7,<2.0" \
-    && poetry install --only main --no-root
+RUN pip install "poetry==2.1.2" \
+    && poetry install --no-root
+
 
 COPY src/recs /app
 
