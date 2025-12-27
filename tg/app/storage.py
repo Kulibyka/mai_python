@@ -16,7 +16,7 @@ class JsonStorage:
         self._profiles_path = self.data_dir / "profiles.json"
         self._likes_path = self.data_dir / "likes.json"
 
-        self._places: dict[int, Place] = {}
+        self._places: dict[str, Place] = {}
         self._reviews: dict[int, Review] = {}
         self._profiles: dict[int, UserProfile] = {}
         self._likes: dict[str, list[int]] = {}
@@ -33,7 +33,7 @@ class JsonStorage:
 
     def _load_all(self) -> None:
         places_raw = self._read_json(self._places_path, [])
-        self._places = {item["id"]: Place.from_dict(item) for item in places_raw}
+        self._places = {str(item["id"]): Place.from_dict(item) for item in places_raw}
 
         reviews_raw = self._read_json(self._reviews_path, [])
         self._reviews = {item["id"]: Review.from_dict(item) for item in reviews_raw}
@@ -64,7 +64,7 @@ class JsonStorage:
             return
         sample_places = [
             Place(
-                id=1,
+                id="1",
                 name="Кофейня Сосны",
                 category="Кофейни",
                 address="ул. Лесная, 10",
@@ -77,7 +77,7 @@ class JsonStorage:
                 contacts="https://example.com/coffee",
             ),
             Place(
-                id=2,
+                id="2",
                 name="Парк Зеленый берег",
                 category="Парки",
                 address="набережная, 5",
@@ -89,7 +89,7 @@ class JsonStorage:
                 created_at=utc_now(),
             ),
             Place(
-                id=3,
+                id="3",
                 name="Музей современного искусства",
                 category="Музеи",
                 address="пр. Центральный, 25",
@@ -106,7 +106,8 @@ class JsonStorage:
         self._save_all()
 
     def next_place_id(self) -> int:
-        return max(self._places.keys(), default=0) + 1
+        numeric_ids = [int(key) for key in self._places.keys() if str(key).isdigit()]
+        return max(numeric_ids, default=0) + 1
 
     def next_review_id(self) -> int:
         return max(self._reviews.keys(), default=0) + 1
@@ -117,8 +118,8 @@ class JsonStorage:
             places = [place for place in places if place.status == status]
         return places
 
-    def get_place(self, place_id: int) -> Place | None:
-        return self._places.get(place_id)
+    def get_place(self, place_id: str) -> Place | None:
+        return self._places.get(str(place_id))
 
     def add_place(self, place: Place) -> None:
         self._places[place.id] = place
@@ -128,8 +129,10 @@ class JsonStorage:
         self._places[place.id] = place
         self._save_all()
 
-    def list_reviews(self, place_id: int, status: str | None = None) -> list[Review]:
-        reviews = [review for review in self._reviews.values() if review.place_id == place_id]
+    def list_reviews(self, place_id: str, status: str | None = None) -> list[Review]:
+        reviews = [
+            review for review in self._reviews.values() if str(review.place_id) == str(place_id)
+        ]
         if status:
             reviews = [review for review in reviews if review.status == status]
         return reviews
@@ -146,7 +149,7 @@ class JsonStorage:
             self._save_all()
         return profile
 
-    def toggle_favorite(self, user_id: int, place_id: int) -> bool:
+    def toggle_favorite(self, user_id: int, place_id: str) -> bool:
         profile = self.get_profile(user_id)
         if place_id in profile.favorites:
             profile.favorites.remove(place_id)
@@ -158,14 +161,14 @@ class JsonStorage:
         self._save_all()
         return is_favorite
 
-    def list_favorites(self, user_id: int) -> list[Place]:
+    def list_favorites(self, user_id: int) -> list[str]:
         profile = self.get_profile(user_id)
-        return [place for place_id in profile.favorites if (place := self.get_place(place_id))]
+        return list(profile.favorites)
 
     def list_user_places(self, user_id: int) -> list[Place]:
         return [place for place in self._places.values() if place.created_by == user_id]
 
-    def record_like(self, user_id: int, place_id: int, value: int) -> None:
+    def record_like(self, user_id: int, place_id: str, value: int) -> None:
         key = str(user_id)
         self._likes.setdefault(key, [])
         self._likes[key].append(value)
