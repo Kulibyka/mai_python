@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.models import Place, Review, UserProfile, utc_now
+from tg.app.models import Place, Review, UserProfile, utc_now
 
 
 class JsonStorage:

@@ -1,0 +1,47 @@
+version: 3
+
+silent: true
+
+includes:
+  src:
+    taskfile: ./src
+    dir: ./src
+
+vars:
+  NENV: "node_modules"
+  SERVICES: "src"
+
+tasks:
+  _prettier:
+    internal: true
+    cmds:
+      - "{{.NENV}}/.bin/prettier {{.COMMAND}}"
+
+  init:
+    desc: Initialize project environment
+    cmds:
+      - echo 'Installing node dependencies...'
+      - "npm install"
+
+      - for: { var: SERVICES, as: SERVICE }
+        task: "{{.SERVICE}}:init"
+
+  lint:
+    desc: Lint project
+    cmds:
+      - echo 'Running prettier checks...'
+      - task: _prettier
+        vars: { COMMAND: "--check ." }
+
+      - for: { var: SERVICES, as: SERVICE }
+        task: "{{.SERVICE}}:lint"
+
+  lint-fix:
+    desc: Fix lint issues
+    cmds:
+      - echo 'Running prettier...'
+      - task: _prettier
+        vars: { COMMAND: "--write ." }
+
+      - for: { var: SERVICES, as: SERVICE }
+        task: "{{.SERVICE}}:lint-fix"

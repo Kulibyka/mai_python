@@ -6,20 +6,19 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from app.keyboards import (
+from tg.app.keyboards import (
     MAIN_MENU,
     MIN_RATINGS,
-    PRICE_LEVELS,
     category_keyboard,
     find_menu,
     place_actions,
     price_keyboard,
     rating_keyboard,
 )
-from app.models import Place, utc_now
-from app.services import LlmSummaryService, RecommendationService, SearchFilters
-from app.states import AddPlaceStates, SearchStates
-from app.storage import JsonStorage
+from tg.app.models import Place, utc_now
+from tg.app.services import LlmSummaryService, RecommendationService, SearchFilters
+from tg.app.states import AddPlaceStates, SearchStates
+from tg.app.storage import JsonStorage
 
 router = Router()
 
@@ -418,7 +417,7 @@ async def admin_panel(message: Message, storage: JsonStorage, admin_ids: set[int
             f"Описание: {place.description}\n"
             f"Цена: {place.price_level}"
         )
-        from app.keyboards import admin_moderation_keyboard
+        from tg.app.keyboards import admin_moderation_keyboard
 
         await message.answer(text, reply_markup=admin_moderation_keyboard(place.id))
 

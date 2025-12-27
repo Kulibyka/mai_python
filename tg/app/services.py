@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from app.models import Place, Review
+from tg.app.models import Place, Review
 
 
 @dataclass

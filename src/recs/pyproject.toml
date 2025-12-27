@@ -1,0 +1,150 @@
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+
+[project]
+authors = [{name = "Aleksandr Sukharev"}]
+dependencies = [
+  "alembic (>=1.17.2,<2.0.0)",
+  "dishka (>=1.7.2,<2.0.0)",
+  "fastapi (>=0.115.0,<1.0.0)",
+  "msgpack (>=1.1.2,<2.0.0)",
+  "orjson (>=3.11.4,<4.0.0)",
+  "psycopg (>=3.3.2,<4.0.0)",
+  "pydantic (>=2.12.4,<3.0.0)",
+  "pydantic-settings[yaml] (>=2.12.0,<3.0.0)",
+  "python-dotenv (>=1.2.1,<2.0.0)",
+  "qdrant-client (>=1.16.2,<2.0.0)",
+  "sentence-transformers (>=5.2.0,<6.0.0)",
+  "sqlalchemy (>=2.0.45,<3.0.0)",
+  "uvicorn[standard] (>=0.32.0,<1.0.0)",
+]
+description = ""
+name = "recs"
+readme = "README.md"
+requires-python = ">=3.13,<4.0"
+version = "0.1.0"
+
+[tool.black]
+line-length = 120
+target-version = ['py312']
+
+[tool.coverage.report]
+exclude_also = [
+  # Don't complain about abstract methods, they aren't run:
+  "@(abc\\.)?abstractmethod",
+  "class .*Protocol\\):",
+  # Don't complain about missing debug-only code:
+  "def __repr__",
+  # Don't complain if non-runnable code isn't run:
+  "if 0:",
+  "if __name__ == .__main__.:",
+  "if self\\.debug",
+  # Don't complain if tests don't hit defensive assertion code:
+  "raise AssertionError",
+  "raise NotImplementedError",
+]
+
+[tool.coverage.run]
+include = ["bin/*", "lib/*"]
+
+[tool.deptry]
+exclude = [".git", ".pytest_cache", ".venv", "tests*/*", "tests/", "venv"]
+known_first_party = ["bin", "lib", "tests"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["asyncpg", "openpyxl", "orjson", "psycopg", "python-multipart"]
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+black = "*"
+coverage = "*"
+deptry = "*"
+go-task-bin = "*"
+httpx = "^0.28.1"
+multidict = "^6.2.0"
+pyright = "*"
+pytest = "^8.3.5"
+pytest-asyncio = "*"
+pyupgrade = "*"
+ruff = "*"
+sort-all = "*"
+toml-sort = "*"
+
+[tool.pyright]
+exclude = [".pytest_cache", ".venv"]
+extraPaths = ["."]
+include = ["."]
+pythonPlatform = "All"
+pythonVersion = "3.13"
+reportConstantRedefinition = "none"
+reportMissingTypeStubs = "none"
+reportPrivateUsage = "information"
+reportPropertyTypeMismatch = "warning"
+reportUninitializedInstanceVariable = "warning"
+reportUnknownMemberType = "none"
+reportUnnecessaryTypeIgnoreComment = "warning"
+reportUntypedFunctionDecorator = "warning"
+typeCheckingMode = "strict"
+useLibraryCodeForTypes = true
+venv = ".venv"
+venvPath = "."
+
+[tool.ruff]
+exclude = [".pytest_cache", ".venv"]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = [
+  "UP", # pyupgrade
+]
+ignore = [
+  "ANN001",
+  "ANN003",
+  "ANN201",
+  "ANN202",
+  "ARG001",
+  "D200",
+  "D202", # No blank lines allowed after function docstring
+  "D203", # ignoring `incorrect-blank-line-before-class`. Using `no-blank-line-before-class` (D211)
+  "D205",
+  "D212", # ignoring `multi-line-summary-first-line`. Using `multi-line-summary-second-line` (D213)
+  "D400", # First line should end with a period
+  "D415", # First line should end with a period, question mark, or exclamation point
+  "EM101",
+  "ERA001",
+  "PTH123",
+  "RUF001", # ambiguous-unicode-character-string
+  "RUF002", # ambiguous-unicode-character-docstring
+  "RUF003", # ambiguous-unicode-character-comment
+  "TRY003",
+]
+select = ["ALL"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+  "fastapi.Depends",
+  "fastapi.params.Depends",
+  "fastapi.params.Query",
+  "fastapi.Query",
+  "fastapi.Security",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = ["F403", "F405"]
+"migrations/*" = [
+  "INP001", # implicit-namespace-package
+]
+"tests*/*" = ["D100", "D103", "D104", "S101"]
+
+[tool.tomlsort]
+all = true
+ignore_case = true
+in_place = true
+trailing_comma_inline_array = true

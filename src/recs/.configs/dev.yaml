@@ -1,0 +1,9 @@
+app:
+  debug: True
+  env: "develop"
+
+
+log:
+  loggers:
+    asyncio:
+      propagate: False
