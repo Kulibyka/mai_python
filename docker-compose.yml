@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  postgres:
+    extends:
+      file: ./docker/docker-compose.infra.yml
+      service: postgres
+
+  qdrant:
+    extends:
+      file: ./docker/docker-compose.infra.yml
+      service: qdrant
+
+  recs-api:
+    build:
+      context: .
+      dockerfile: docker/recs.Dockerfile
+    environment:
+      APP_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nomad
+      DB_USER: nomad
+      DB_PASSWORD: nomadpass
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - nomad-net
+    ports:
+      - "8000:8000"
+
+  tg-bot:
+    build:
+      context: .
+      dockerfile: docker/tg.Dockerfile
+    env_file:
+      - tg/.env
+    environment:
+      API_BASE_URL: http://recs-api:8000/v1
+      DATA_DIR: /app/data
+    volumes:
+      - tg_data:/app/data
+    depends_on:
+      recs-api:
+        condition: service_started
+    networks:
+      - nomad-net
+
+networks:
+  nomad-net:
+    name: nomad-net
+
+volumes:
+  pg_data:
+  qdrant_data:
+  tg_data:

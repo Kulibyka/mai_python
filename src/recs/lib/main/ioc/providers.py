@@ -1,6 +1,7 @@
 """Провайдеры для контейнера зависимостей."""
 
 from collections.abc import AsyncIterable, AsyncIterator
+import os
 
 from dishka import (
     Provider,
@@ -9,6 +10,7 @@ from dishka import (
     provide,  # pyright: ignore[reportUnknownVariableType]
     provide_all,
 )
+import pydantic
 from qdrant_client import AsyncQdrantClient
 from sentence_transformers import SentenceTransformer
 from sqlalchemy.ext.asyncio import (
@@ -33,7 +35,7 @@ from lib.infra.repositories.qdrant_place_repository import QdrantPlaceRepository
 from lib.infra.repositories.role_repository import SQLAlchemyRoleRepository
 from lib.infra.repositories.ugc_repository import SQLAlchemyUGCRepository
 from lib.infra.repositories.user_repository import SQLAlchemyUserRepository
-from lib.main.settings import DatabaseSettings, QdrantSettings, Settings
+from lib.main.settings import AppSettings, DatabaseSettings, QdrantSettings, Settings
 
 
 class SettingsProvider(Provider):
@@ -46,7 +48,42 @@ class SettingsProvider(Provider):
 
         :return: Экземпляр настроек приложения
         """
-        return Settings()
+        base_defaults = Settings()
+        app_defaults = base_defaults.app
+        db_defaults = base_defaults.db
+        qdrant_defaults = base_defaults.qdrant
+
+        def _bool_env(var: str, default: bool) -> bool:
+            value = os.getenv(var)
+            if value is None:
+                return default
+            return value.lower() in {"1", "true", "yes", "on"}
+
+        db_password = os.getenv("DB_PASSWORD", db_defaults.password.get_secret_value())
+
+        return Settings(
+            app=AppSettings(
+                env=os.getenv("APP_ENV", app_defaults.env),
+                debug=_bool_env("APP_DEBUG", app_defaults.debug),
+            ),
+            db=DatabaseSettings(
+                driver=os.getenv("DB_DRIVER", db_defaults.driver),
+                name=os.getenv("DB_NAME", db_defaults.name),
+                host=os.getenv("DB_HOST", db_defaults.host),
+                port=int(os.getenv("DB_PORT", db_defaults.port)),
+                user=os.getenv("DB_USER", db_defaults.user),
+                password=pydantic.SecretStr(db_password),
+                pool_size=int(os.getenv("DB_POOL_SIZE", db_defaults.pool_size)),
+                pool_pre_ping=_bool_env("DB_POOL_PRE_PING", db_defaults.pool_pre_ping),
+                echo=_bool_env("DB_ECHO", db_defaults.echo),
+            ),
+            qdrant=QdrantSettings(
+                url=os.getenv("QDRANT_URL", qdrant_defaults.url),
+                api_key=os.getenv("QDRANT_API_KEY", qdrant_defaults.api_key),
+                collection_name=os.getenv("QDRANT_COLLECTION", qdrant_defaults.collection_name),
+                vector_size=int(os.getenv("QDRANT_VECTOR_SIZE", qdrant_defaults.vector_size)),
+            ),
+        )
 
     @provide(scope=Scope.APP)
     async def get_database_settings(self, settings: Settings) -> DatabaseSettings:
